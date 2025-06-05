@@ -8,6 +8,7 @@
 #include <QtNetworl>
 #include <QByteArray>
 #include <QDebug>
+#include <QMap>
 
 class MyTcpServer : public QObject
 {
@@ -15,12 +16,15 @@ class MyTcpServer : public QObject
 public:
     explicit MyTcpServer(QObject *parent = nullptr);
     ~MyTcpServer();
+    
 public slots:
     void slotNewConnection();
     void slotClientDisconnected();
     void slotServerRead();
+    
 private:
     QTcpServer * mTcpServer;
     QTcpSocket * mTcpSocket;
+    QMap<qintptr, QTcpSocket*> clients;
 };
 #endif

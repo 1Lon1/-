@@ -5,52 +5,57 @@
 
 MyTcpServer::~MyTcpServer()
 {
-
+    foreach(auto client, clients) {
+        client->close();
+        client->deleteLater();
+    }
     mTcpServer->close();
-    //server_status=0;
 }
 
-MyTcpServer::MyTcpServer(QObject *parent) : QObject(parent){
+MyTcpServer::MyTcpServer(QObject *parent) : QObject(parent)
+{
     mTcpServer = new QTcpServer(this);
+    Database::instance().connect();
+    
+    connect(mTcpServer, &QTcpServer::newConnection, this, &MyTcpServer::slotNewConnection);
 
-    connect(mTcpServer, &QTcpServer::newConnection,
-            this, &MyTcpServer::slotNewConnection);
-
-    if(!mTcpServer->listen(QHostAddress::Any, 33333)){
-        qDebug() << "server is not started";
+    if(!mTcpServer->listen(QHostAddress::Any, 33333)) {
+        qDebug() << "Server error:" << mTcpServer->errorString();
     } else {
-        //server_status=1;
-        qDebug() << "server is started";
+        qDebug() << "Server started on port 33333";
     }
 }
 
-void MyTcpServer::slotNewConnection(){
- //   if(server_status==1){
-        mTcpSocket = mTcpServer->nextPendingConnection();
-        mTcpSocket->write("Hello, World!!! I am echo server!\r\n");
-        connect(mTcpSocket, &QTcpSocket::readyRead,this,&MyTcpServer::slotServerRead);
-        connect(mTcpSocket,&QTcpSocket::disconnected,this,&MyTcpServer::slotClientDisconnected);
-   // }
+void MyTcpServer::slotNewConnection()
+{
+    QTcpSocket *clientSocket = mTcpServer->nextPendingConnection();
+    qintptr id = clientSocket->socketDescriptor();
+    clients[id] = clientSocket;
+    
+    connect(clientSocket, &QTcpSocket::readyRead, this, &MyTcpServer::slotServerRead);
+    connect(clientSocket, &QTcpSocket::disconnected, this, &MyTcpServer::slotClientDisconnected);
+    
+    qDebug() << "New client connected:" << id;
 }
 
-void MyTcpServer::slotServerRead(){
-    QString res = "";
-    while(mTcpSocket->bytesAvailable()>0)
-    {
-        QByteArray array =mTcpSocket->readAll();
-        qDebug()<<array<<"\n";
-        if(array=="\x01")
-        {
-            mTcpSocket->write(res.toUtf8());
-            res = "";
-        }
-        else
-            res.append(array);
-    }
-    mTcpSocket->write(res.toUtf8());
-
+void MyTcpServer::slotServerRead()
+{
+    QTcpSocket *clientSocket = qobject_cast<QTcpSocket*>(sender());
+    if(!clientSocket) return;
+    
+    QByteArray data = clientSocket->readAll();
+    QByteArray response = ServerFunctions::parseRequest(data);
+    clientSocket->write(response);
 }
 
-void MyTcpServer::slotClientDisconnected(){
-    mTcpSocket->close();
+void MyTcpServer::slotClientDisconnected()
+{
+    QTcpSocket *clientSocket = qobject_cast<QTcpSocket*>(sender());
+    if(!clientSocket) return;
+    
+    qintptr id = clientSocket->socketDescriptor();
+    clients.remove(id);
+    clientSocket->deleteLater();
+    
+    qDebug() << "Client disconnected:" << id;
 }
